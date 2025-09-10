@@ -3,6 +3,8 @@
 
 For educational and learning purposes only.
 
+Using discord as the C2 for reverse shell
+
 🛠️ **Available Commands**
 
 🔑 System & Info:
